@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-900">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Family Chord Quiz</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full flex flex-col bg-gray-900 text-gray-200">
+  <!-- Header -->
+  <header class="bg-gray-800 text-white py-4 shadow-md">
+    <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
+      <h1 class="text-2xl font-semibold">🎸 Family Chord Quiz</h1>
+      <button id="modeSwitchBtn" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg transition">
+        Switch to Mode 2
+      </button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-1 overflow-auto">
+    <div class="max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Quiz Panel -->
+      <section class="lg:col-span-2 bg-gray-800 p-6 rounded-xl shadow-xl space-y-4">
+        <div id="question" class="text-xl text-cyan-300">Loading...</div>
+        <div class="relative">
+          <input id="answerInput" type="text" placeholder="Masukkan jawaban (e.g. Em)"
+                 class="w-full p-3 rounded-md bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-cyan-400" autocomplete="off" />
+          <div id="suggestions" class="absolute z-10 w-full bg-gray-700 rounded-md mt-1 max-h-40 overflow-y-auto hidden"></div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <button id="submitBtn" onclick="checkAnswer()" class="bg-green-500 hover:bg-green-400 px-6 py-3 rounded-lg text-white font-semibold transition-all">
+            Jawab
+          </button>
+          <div id="timerBar" class="flex-1 h-3 bg-gray-600 rounded-full overflow-hidden">
+            <div id="timerFill" class="h-full bg-emerald-400 w-0"></div>
+          </div>
+        </div>
+        <div id="result" class="mt-2 text-lg font-semibold text-yellow-300 min-h-[2rem]"></div>
+        <button id="nextBtn" onclick="randomQuestion()" class="mt-2 bg-blue-500 hover:bg-blue-400 px-6 py-3 rounded-lg text-white font-semibold transition-all hidden">
+          Next Question
+        </button>
+      </section>
+
+      <!-- Settings & Score Panel -->
+      <aside class="bg-gray-800 p-6 rounded-xl shadow-xl space-y-6">
+        <div id="mode1Info" class="space-y-2">
+          <div class="text-gray-300 font-medium">Mode 1: Key & Degree</div>
+        </div>
+        <div id="mode2Settings" class="space-y-4 hidden">
+          <div class="text-gray-300 font-medium">Mode 2: Sequence of Degrees</div>
+          <div>
+            <label class="block text-gray-400">Panjang Pola Derajat:</label>
+            <select id="patternLengthSelect" class="w-full p-2 bg-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-400"></select>
+          </div>
+          <div>
+            <label class="block text-gray-400">Timer Duration:</label>
+            <select id="timerSelect" class="w-full p-2 bg-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-cyan-400">
+              <option value="5">5s</option>
+              <option value="10">10s</option>
+              <option value="15">15s</option>
+              <option value="20">20s</option>
+            </select>
+          </div>
+        </div>
+        <div class="text-gray-300 font-medium">Score</div>
+        <div class="flex justify-between text-white">
+          <div>✅ Benar: <span id="correctCount">0</span></div>
+          <div>⏱️ Gagal: <span id="wrongCount">0</span></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script>
+    // state and data
+    const chordFamilies = { C:["C","Dm","Em","F","G","Am","Bdim"], D:["D","Em","F#m","G","A","Bm","C#dim"], E:["E","F#m","G#m","A","B","C#m","D#dim"], F:["F","Gm","Am","Bb","C","Dm","Edim"], G:["G","Am","Bm","C","D","Em","F#dim"], A:["A","Bm","C#m","D","E","F#m","G#dim"], B:["B","C#m","D#m","E","F#","G#m","A#dim"] };
+    const degrees = ["1","2","3","4","5","6","7"];
+    let mode=1, currentKey, currentDegree, correctAnswer, timer, lockAnswer, startTime;
+    let correctCount=0, wrongCount=0; const bestTimes = {};
+
+    // DOM
+    const qEl=document.getElementById('question'), aIn=document.getElementById('answerInput'), rEl=document.getElementById('result');
+    const nextBtn=document.getElementById('nextBtn'), subBtn=document.getElementById('submitBtn'), tFill=document.getElementById('timerFill');
+    const mSwitch=document.getElementById('modeSwitchBtn'), m2=document.getElementById('mode2Settings'), m1=document.getElementById('mode1Info');
+    const tSelect=document.getElementById('timerSelect'), cCount=document.getElementById('correctCount'), wCount=document.getElementById('wrongCount');
+    const patternSelect=document.getElementById('patternLengthSelect');
+    const suggestionsBox=document.getElementById('suggestions');
+
+    // init pattern select
+    for(let i=2;i<=10;i++){ const opt=document.createElement('option'); opt.value=i; opt.textContent=`${i} pola`; patternSelect.appendChild(opt); }
+
+    // utils
+    function getChordType(c){ if(c.includes('dim')) return 'diminished'; if(c.includes('m')) return 'minor'; return 'major'; }
+    function explainChord(k,d,a){ const seq=chordFamilies[k].join(' - ');
+      return `<div class=\"mt-4 p-3 bg-gray-700 rounded-md text-sm text-gray-300 border-l-4 border-cyan-400\">`+
+             `<strong>Penjelasan:</strong><br/>Tangga nada <strong>${k} major</strong>:<br/>`+
+             `<code class=\"text-cyan-300\">${seq}</code><br/>`+
+             `Derajat ke-${d} → <strong>${a}</strong> (<em>${getChordType(a)}</em>).</div>`;
+    }
+    function normalize(s){ return s.trim().split(/\s+/).join(' '); }
+    function getRandomPattern(len){ let p=[]; for(let i=0;i<len;i++) p.push(degrees[Math.floor(Math.random()*degrees.length)]); return p; }
+
+    // timer animation
+    function animateTimer(duration){ tFill.style.transition='none'; tFill.style.width='0%';
+      requestAnimationFrame(()=>{ tFill.style.transition=`width ${duration}ms linear`; tFill.style.width='100%'; });
+    }
+
+    // suggestions: use last token
+    aIn.addEventListener('input', () => {
+  const raw = aIn.value;
+  const tokens = raw.split(/\s+/);
+  const last = tokens[tokens.length-1].toLowerCase();
+  if (!last) { suggestionsBox.classList.add('hidden'); return; }
+  let pool = mode === 1 && currentKey ? chordFamilies[currentKey] : Object.values(chordFamilies).flat();
+
+  // Hapus duplikat pool berdasarkan huruf kecil (case-insensitive)
+  const uniquePool = Array.from(new Set(pool.map(c => c.toLowerCase())));
+
+  const filtered = uniquePool.filter(c => c.startsWith(last));
+  suggestionsBox.innerHTML = '';
+  if (!filtered.length) { suggestionsBox.classList.add('hidden'); return; }
+  filtered.slice(0, 10).forEach((item, idx) => {
+    const div = document.createElement('div');
+    div.className = 'px-3 py-2 hover:bg-gray-600 cursor-pointer grid grid-cols-2';
+    div.innerHTML = `<span>${idx+1}.</span><span>${item}</span>`;
+    div.addEventListener('click', () => {
+      tokens[tokens.length-1] = item;
+      aIn.value = tokens.join(' ');
+      suggestionsBox.classList.add('hidden');
+      aIn.focus();
+    });
+    suggestionsBox.appendChild(div);
+  });
+  suggestionsBox.classList.remove('hidden');
+});
+    aIn.addEventListener('keydown', e => {
+      if(e.key>='1' && e.key<='9' && !suggestionsBox.classList.contains('hidden')){
+        e.preventDefault();
+        const idx=parseInt(e.key)-1;
+        const items=suggestionsBox.children;
+        if(items[idx]) items[idx].click();
+      }
+      if(e.key==='Escape') suggestionsBox.classList.add('hidden');
+    });
+    document.addEventListener('click', e => {
+      if(!suggestionsBox.contains(e.target) && e.target !== aIn) suggestionsBox.classList.add('hidden');
+    });
+
+    // quiz
+    function randomQuestion(){
+      suggestionsBox.classList.add('hidden');
+      nextBtn.classList.add('hidden'); subBtn.classList.remove('hidden'); rEl.innerHTML=''; aIn.value=''; aIn.focus(); lockAnswer=false;
+      if(mode===1){ const keys=Object.keys(chordFamilies); currentKey=keys[Math.random()*keys.length|0]; currentDegree=degrees[Math.random()*degrees.length|0]; correctAnswer=chordFamilies[currentKey][+currentDegree-1]; qEl.textContent=`Nada dasar: ${currentKey}, Derajat: ${currentDegree} = ?`;
+      } else { const keys=Object.keys(chordFamilies); currentKey=keys[Math.random()*keys.length|0]; const len=+patternSelect.value; const degs=getRandomPattern(len); qEl.textContent=`Do = ${currentKey}, Derajat: ${degs.join(' ')} = ?`; correctAnswer=degs.map(d=>chordFamilies[currentKey][+d-1]).join(' '); }
+      const dur=(mode===2?+tSelect.value:5)*1000; animateTimer(dur); clearTimeout(timer); startTime=Date.now(); timer=setTimeout(() => { suggestionsBox.classList.add('hidden'); onTimeUp(); }, dur);
+    }
+    function onTimeUp(){ if(lockAnswer) return; lockAnswer=true; wrongCount++; wCount.textContent=wrongCount; rEl.innerHTML=`⏱️ Gagal! Jawaban: <strong>${correctAnswer}</strong>`+explainChord(currentKey,mode===1?currentDegree:'sequence',correctAnswer); subBtn.classList.add('hidden'); nextBtn.classList.remove('hidden'); }
+    function checkAnswer(){ suggestionsBox.classList.add('hidden'); if(lockAnswer) return; const u=normalize(aIn.value.toLowerCase()), a=normalize(correctAnswer.toLowerCase()); if(u===a){ lockAnswer=true; clearTimeout(timer); const e=((Date.now()-startTime)/1000).toFixed(2); let msg=`Kamu menyelesaikan dalam ${e}s.`; if(mode===2){ const q=qEl.textContent, p=bestTimes[q]; if(p!=null){ const diff=(p-e).toFixed(2); msg+= e<p?` ${Math.abs(diff)} detik lebih cepat dari sebelumnya.`:` ${Math.abs(diff)} detik lebih lambat dari sebelumnya.`; } bestTimes[q]=[Math.min(p||Infinity,e)]; } rEl.innerHTML=`✅ Benar! Jawaban: <strong>${correctAnswer}</strong><br>${msg}`+explainChord(currentKey,mode===1?currentDegree:'sequence',correctAnswer); subBtn.classList.add('hidden'); nextBtn.classList.remove('hidden'); correctCount++; cCount.textContent=correctCount; } else rEl.innerHTML='❌ Salah! Coba lagi.'; }
+    mSwitch.addEventListener('click',()=>{ mode=mode===1?2:1; m1.classList.toggle('hidden'); m2.classList.toggle('hidden'); mSwitch.textContent=mode===1?'Switch to Mode 2':'Switch to Mode 1'; randomQuestion(); });
+    aIn.addEventListener('keypress', e=>{ if(e.key==='Enter') checkAnswer(); }); window.onload=randomQuestion;
+  </script>
+</body>
+</html> 
